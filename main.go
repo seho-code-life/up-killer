@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"sync"
@@ -13,7 +14,7 @@ import (
 )
 
 // 设置每次抢购的间隔时间
-const SECKILL_TIME = 500 * time.Millisecond
+const SECKILL_TIME = 800
 
 const COUNT = 10
 
@@ -94,7 +95,7 @@ type Issues struct {
 	Sold        string `json:"sold"`
 }
 
-const PROD_URL = "https://core-api-prod.upstairs.io"
+const PROD_URL = ""
 
 // 初始化用户
 var users *[]User
@@ -201,7 +202,8 @@ func seckill(productId int) {
 					break
 				}
 			}
-			FOR: for {
+		FOR:
+			for {
 				select {
 				case <-isClose:
 					break FOR
@@ -227,8 +229,9 @@ func seckill(productId int) {
 							isClose <- struct{}{}
 						}
 					}()
-					count --;
-					time.Sleep(SECKILL_TIME)
+					count--
+					// 在SECKILL_TIME时间内随机休眠
+					time.Sleep(time.Duration(rand.Intn(SECKILL_TIME)) * time.Millisecond)
 				}
 			}
 		}(email, token)
@@ -244,7 +247,7 @@ func login() {
 		wg.Add(1)
 		go func(user User) {
 			defer wg.Done()
-			result, err := httpDo[LoginRes]("https://core-api-auth-prod.upstairs.io/login", map[string]any{
+			result, err := httpDo[LoginRes]("/login", map[string]any{
 				"password": user.Password,
 				"username": user.Email,
 			}, "POST")
