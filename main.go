@@ -13,10 +13,9 @@ import (
 )
 
 // 设置每次抢购的间隔时间
-const SECKILL_TIME = 300 * time.Millisecond
+const SECKILL_TIME = 500 * time.Millisecond
 
-// 抢购次数
-var COUNT = 10
+const COUNT = 10
 
 type User struct {
 	NickName    string `json:"nickName"`
@@ -190,9 +189,10 @@ func seckill(productId int) {
 	for email, token := range userTokenMap {
 		wg.Add(1)
 		go func(email string, token string) {
-			//
 			defer wg.Done()
-			var count = COUNT
+			isClose := make(chan struct{})
+			// COUNT作为默认值
+			count := COUNT
 			// 获取支付密码, 循环users数组, 通过email匹配
 			var currentUser *User
 			for _, user := range *users {
@@ -201,28 +201,35 @@ func seckill(productId int) {
 					break
 				}
 			}
-			for {
-				// 如果count为0, 则退出循环
-				if count == 0 {
-					fmt.Println("用户", email, "抢购结束😭")
+			FOR: for {
+				select {
+				case <-isClose:
 					break
+				default:
+					// 如果count为0, 则退出循环
+					if count == 0 {
+						fmt.Println("用户", email, "抢购结束, 共抢购", COUNT-count, "次")
+						break FOR
+					}
+					go func() {
+						_, err := httpDo[any](fmt.Sprintf("%s/startups/%d/mint", PROD_URL, productId), map[string]any{
+							"amount:":     userDetailMap[email].Startup.Price,
+							"currency_id": "1000000",
+							"issue_index": userDetailMap[email].Startup.IssueIndex,
+							"password":    currentUser.PayPassword,
+						}, "POST", RequestOptions{
+							token: token,
+						})
+						if err != nil {
+							fmt.Println("用户", email, "抢购失败😈")
+						} else {
+							fmt.Println("用户", email, "抢购成功😄")
+							isClose <- struct{}{}
+						}
+					}()
+					count --;
+					time.Sleep(SECKILL_TIME)
 				}
-				_, err := httpDo[any](fmt.Sprintf("%s/startups/%d/mint", PROD_URL, productId), map[string]any{
-					"amount:":     userDetailMap[email].Startup.Price,
-					"currency_id": "1000000",
-					"issue_index": userDetailMap[email].Startup.IssueIndex,
-					"password":    currentUser.PayPassword,
-				}, "POST", RequestOptions{
-					token: token,
-				})
-				if err != nil {
-					fmt.Println("用户", email, "抢购失败😈")
-				} else {
-					fmt.Println("用户", email, "抢购成功😄")
-					break
-				}
-				count--
-				time.Sleep(SECKILL_TIME)
 			}
 		}(email, token)
 	}
