@@ -94,7 +94,7 @@ type Issues struct {
 	Sold        string `json:"sold"`
 }
 
-const PROD_URL = ""
+const PROD_URL = "https://core-api-prod.upstairs.io"
 
 // 初始化用户
 var users *[]User
@@ -204,7 +204,7 @@ func seckill(productId int) {
 			FOR: for {
 				select {
 				case <-isClose:
-					break
+					break FOR
 				default:
 					// 如果count为0, 则退出循环
 					if count == 0 {
@@ -244,7 +244,7 @@ func login() {
 		wg.Add(1)
 		go func(user User) {
 			defer wg.Done()
-			result, err := httpDo[LoginRes]("/login", map[string]any{
+			result, err := httpDo[LoginRes]("https://core-api-auth-prod.upstairs.io/login", map[string]any{
 				"password": user.Password,
 				"username": user.Email,
 			}, "POST")
