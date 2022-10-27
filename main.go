@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
@@ -23,6 +24,8 @@ type User struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
 	PayPassword string `json:"pay_password"`
+	Open        bool   `json:"open"`
+	Amount      int    `json:"amount"`
 }
 
 type LoginRes struct {
@@ -179,7 +182,14 @@ func parseUserJson() (*[]User, error) {
 		return nil, err
 	} else {
 		fmt.Println("解码用户成功")
-		return &users, nil
+		// 过滤user open为false的用户
+		var newUsers []User
+		for _, user := range users {
+			if user.Open {
+				newUsers = append(newUsers, user)
+			}
+		}
+		return &newUsers, nil
 	}
 }
 
@@ -208,14 +218,17 @@ func seckill(productId int) {
 				case <-isClose:
 					break FOR
 				default:
+					// 在SECKILL_TIME时间内随机休眠
+					time.Sleep(time.Duration(rand.Intn(SECKILL_TIME)) * time.Millisecond)
 					// 如果count为0, 则退出循环
 					if count == 0 {
 						fmt.Println("用户", email, "抢购结束, 共抢购", COUNT-count, "次")
 						break FOR
 					}
+					count--
 					go func() {
 						_, err := httpDo[any](fmt.Sprintf("%s/startups/%d/mint", PROD_URL, productId), map[string]any{
-							"amount:":     userDetailMap[email].Startup.Price,
+							"amount":      currentUser.Amount,
 							"currency_id": "1000000",
 							"issue_index": userDetailMap[email].Startup.IssueIndex,
 							"password":    currentUser.PayPassword,
@@ -223,15 +236,12 @@ func seckill(productId int) {
 							token: token,
 						})
 						if err != nil {
-							fmt.Println("用户", email, "抢购失败😈")
+							fmt.Println("用户", email, "抢购失败😈", err.Error())
 						} else {
 							fmt.Println("用户", email, "抢购成功😄")
 							isClose <- struct{}{}
 						}
 					}()
-					count--
-					// 在SECKILL_TIME时间内随机休眠
-					time.Sleep(time.Duration(rand.Intn(SECKILL_TIME)) * time.Millisecond)
 				}
 			}
 		}(email, token)
@@ -286,14 +296,18 @@ func httpDo[T any](url string, params map[string]any, method string, options ...
 		request.Header.Add("authorization", "Bearer "+options[0].token)
 	}
 	resp, err := http.DefaultClient.Do(request)
+
 	if err != nil {
 		return nil, err
 	}
+
 	defer resp.Body.Close()
 
 	// 判断状态码
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("请求失败，状态码：%d", resp.StatusCode)
+		// 打印resp返回内容
+		body, _ := ioutil.ReadAll(resp.Body)
+		return nil, fmt.Errorf("请求失败，状态码：%d , 信息为: %s", resp.StatusCode, string(body))
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
